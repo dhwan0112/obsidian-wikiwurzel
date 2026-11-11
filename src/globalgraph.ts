@@ -13,6 +13,7 @@ import { ItemView, Keymap, TFile, WorkspaceLeaf, debounce, setIcon } from "obsid
 import { T } from "./i18n";
 import type Wikiwurzel from "./main";
 import { nameOf } from "./store";
+import { tagLabel } from "./graph";
 import { parseQuery } from "./ui";
 
 export const GLOBAL_GRAPH_VIEW = "wikiwurzel-graph";
@@ -333,7 +334,7 @@ export class GlobalGraphView extends ItemView {
 				id: "t:" + tag.toLowerCase(),
 				kind: "tag",
 				target: tag,
-				label: "#" + tag,
+				label: tagLabel(tag),
 				degree: 0,
 				color: null,
 				r: 4,

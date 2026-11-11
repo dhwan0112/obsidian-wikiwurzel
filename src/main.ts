@@ -1,7 +1,7 @@
 import { App, Events, Plugin, PluginSettingTab, SettingDefinitionItem, TFolder, debounce } from "obsidian";
 import { API_VERSION, EVENT_CHANGED, EVENT_READY, EVENT_REQUEST, EVENT_UNLOAD, WurzelApi } from "./api";
 import { GLOBAL_GRAPH_VIEW, GlobalGraphView } from "./globalgraph";
-import { GRAPH_VIEW, LocalGraphView } from "./graph";
+import { GRAPH_VIEW, LocalGraphView, setTagPrefix } from "./graph";
 import { T } from "./i18n";
 import { FileTagStore, folderOf } from "./store";
 import { TagEditModal, TagSearchModal, isFolderPath } from "./ui";
@@ -27,6 +27,8 @@ export interface WurzelSettings {
 	globalLinkDistance: number;
 	globalArrows: boolean;
 	globalControlsCollapsed: boolean;
+	/** Write "#" before tag names in the graphs. */
+	tagHash: boolean;
 }
 
 export interface SavedLayout {
@@ -50,6 +52,7 @@ const DEFAULT_SETTINGS: WurzelSettings = {
 	globalLinkDistance: 1,
 	globalArrows: false,
 	globalControlsCollapsed: false,
+	tagHash: true,
 };
 
 const LAYOUT_FILE = "graph-layout.json";
@@ -75,6 +78,7 @@ export default class Wikiwurzel extends Plugin {
 	async onload() {
 		const data = (await this.loadData()) as Partial<WurzelSettings> | null;
 		this.settings = { ...DEFAULT_SETTINGS, ...(data ?? {}) };
+		setTagPrefix(this.settings.tagHash ? "#" : "");
 		this.store = new FileTagStore(this.app, () => {
 			if (this.announced) this.announceChange();
 		});
@@ -263,6 +267,7 @@ export default class Wikiwurzel extends Plugin {
 	}
 
 	async saveSettings() {
+		setTagPrefix(this.settings.tagHash ? "#" : "");
 		await this.saveData(this.settings);
 		this.graphViews().forEach((v) => v.render());
 		this.globalViews().forEach((v) => v.rebuild());
@@ -308,6 +313,11 @@ class WurzelSettingTab extends PluginSettingTab {
 				type: "group",
 				heading: "Wiki graph",
 				items: [
+					{
+						name: "# before tag names",
+						desc: "Write tags as #Chemistry in both graphs. Turn off to show just Chemistry; tags are still told apart by colour.",
+						control: { type: "toggle", key: "tagHash" },
+					},
 					{
 						name: "File types",
 						desc: "Comma-separated extensions shown in the wiki graph. Leave empty to show every file, including program inputs and outputs.",

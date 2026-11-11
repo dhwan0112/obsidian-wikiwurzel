@@ -5,6 +5,15 @@ import { nameOf } from "./store";
 
 export const GRAPH_VIEW = "wikiwurzel-local-graph";
 
+/** Put before tag names in both graphs ("#" or nothing); set from the plugin settings. */
+let tagPrefix = "#";
+export function setTagPrefix(prefix: string) {
+	tagPrefix = prefix;
+}
+export function tagLabel(tag: string) {
+	return tagPrefix + tag;
+}
+
 /* ---------- Building the neighbourhood ---------- */
 
 type NodeKind = "center" | "tag" | "note" | "file";
@@ -64,7 +73,7 @@ function fileNode(path: string, kind: NodeKind): GraphNode {
 }
 
 function tagNode(tag: string, count: number, center = false): GraphNode {
-	return { id: tagId(tag), kind: center ? "center" : "tag", label: "#" + tag, target: tag, count, isTag: true, x: 0, y: 0, vx: 0, vy: 0 };
+	return { id: tagId(tag), kind: center ? "center" : "tag", label: tagLabel(tag), target: tag, count, isTag: true, x: 0, y: 0, vx: 0, vy: 0 };
 }
 
 /**
@@ -408,7 +417,7 @@ export class LocalGraphView extends ItemView {
 		};
 		const graph =
 			this.focusTag !== null ? buildTagGraph(source, this.focusTag, options) : buildFileGraph(source, file ?? "", options);
-		title.setText(this.focusTag !== null ? `#${this.focusTag}` : nameOf(file ?? ""));
+		title.setText(this.focusTag !== null ? tagLabel(this.focusTag) : nameOf(file ?? ""));
 		if (graph.nodes.length <= 1) {
 			root.createDiv({ cls: "ww-graph-empty", text: T.graphNoTags() });
 			return;
