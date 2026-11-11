@@ -29,6 +29,8 @@ export interface WurzelSettings {
 	globalControlsCollapsed: boolean;
 	/** Write "#" before tag names in the graphs. */
 	tagHash: boolean;
+	/** Colour nodes by the core graph's colour groups and by type; off draws only the accent colour. */
+	globalColorGroups: boolean;
 }
 
 export interface SavedLayout {
@@ -52,7 +54,8 @@ const DEFAULT_SETTINGS: WurzelSettings = {
 	globalLinkDistance: 1,
 	globalArrows: false,
 	globalControlsCollapsed: false,
-	tagHash: true,
+	tagHash: false,
+	globalColorGroups: false,
 };
 
 const LAYOUT_FILE = "graph-layout.json";
@@ -317,6 +320,11 @@ class WurzelSettingTab extends PluginSettingTab {
 						name: "# before tag names",
 						desc: "Write tags as #Chemistry in both graphs. Turn off to show just Chemistry; tags are still told apart by colour.",
 						control: { type: "toggle", key: "tagHash" },
+					},
+					{
+						name: "Colour groups",
+						desc: "Colour nodes like the core graph: its colour groups, attachments and tags in their own colours. Off: one plain colour, with tags and highlights in the accent colour.",
+						control: { type: "toggle", key: "globalColorGroups" },
 					},
 					{
 						name: "File types",

@@ -282,6 +282,7 @@ export class GlobalGraphView extends ItemView {
 		const links: GLink[] = [];
 		const q = parseQuery(o.filter);
 		const matcher = groupMatcher(this.plugin.colorGroups());
+		const colourGroups = this.plugin.settings.globalColorGroups;
 
 		const fileOk = (f: TFile) => o.extensions.size === 0 || o.extensions.has(f.extension.toLowerCase());
 		const files = this.app.vault.getFiles().filter(fileOk);
@@ -384,7 +385,7 @@ export class GlobalGraphView extends ItemView {
 		this.links = links.filter((l) => keep.has(l.source) && keep.has(l.target));
 		for (const n of list) {
 			n.r = n.kind === "tag" ? 4 + Math.sqrt(n.degree) * 0.9 : 2.5 + Math.sqrt(n.degree) * 0.6;
-			n.color = matcher(n, n.kind === "tag" ? [n.target] : (tagsOf.get(n.target) ?? []));
+			n.color = colourGroups ? matcher(n, n.kind === "tag" ? [n.target] : (tagsOf.get(n.target) ?? [])) : null;
 		}
 		this.nodes = list;
 		this.neighbours = new Map(list.map((n) => [n, new Set<GNode>()]));
@@ -434,8 +435,14 @@ export class GlobalGraphView extends ItemView {
 				.strength((l) => (l.kind === "parent" ? 0.4 : 0.7) / Math.min(l.source.degree, l.target.degree)),
 		)
 			.force("charge", forceManyBody<GNode>().strength((n) => -(n.kind === "tag" ? 60 : 18) * s.globalRepel).theta(0.9).distanceMax(900))
-			.force("x", forceX<GNode>(0).strength(0.03 * s.globalGravity))
-			.force("y", forceY<GNode>(0).strength(0.03 * s.globalGravity));
+			// Tags with many connections are pulled to the middle harder, so the big hubs sit
+			// at the centre and smaller topics around them.
+			.force("x", forceX<GNode>(0).strength((n) => 0.03 * s.globalGravity * this.pull(n)))
+			.force("y", forceY<GNode>(0).strength((n) => 0.03 * s.globalGravity * this.pull(n)));
+	}
+
+	private pull(n: GNode) {
+		return n.kind === "tag" ? 1 + Math.log2(1 + n.degree) : 1;
 	}
 
 	private stop() {
@@ -543,7 +550,11 @@ export class GlobalGraphView extends ItemView {
 		const groups = new Map<string, GNode[]>();
 		for (const n of this.nodes) {
 			if (!inView(n)) continue;
-			const color = n.color ?? (n.kind === "tag" ? this.colors.tag : n.kind === "file" ? this.colors.file : this.colors.note);
+			// Without colour groups everything is the plain node colour and tags the accent colour.
+			const plain = !this.plugin.settings.globalColorGroups;
+			const color =
+				n.color ??
+				(n.kind === "tag" ? (plain ? this.colors.accent : this.colors.tag) : n.kind === "file" && !plain ? this.colors.file : this.colors.note);
 			const list = groups.get(color);
 			if (list) list.push(n);
 			else groups.set(color, [n]);
