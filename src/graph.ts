@@ -164,30 +164,63 @@ export function buildTagGraph(src: Source, tag: string, o: GraphOptions) {
 
 /* ---------- Layout: a small force simulation, enough for a hundred nodes ---------- */
 
-export function layout(nodes: GraphNode[], edges: GraphEdge[]) {
+const LABEL_MAX = 18;
+/** Width of one label character at the 11px label size. */
+const CHAR_W = 6.6;
+const LABEL_GAP = 16;
+
+export const short = (s: string) => (s.length > LABEL_MAX ? s.slice(0, LABEL_MAX - 1) + "…" : s);
+
+export function labelOf(n: GraphNode): string {
+	return n.isTag && n.kind !== "center" ? `${n.label} (${n.count ?? 0})` : n.label;
+}
+
+export function radiusOf(n: GraphNode): number {
+	if (n.kind === "center") return 9;
+	return n.isTag ? 6 + Math.min(6, Math.log2(1 + (n.count ?? 0)) / 2) : 5;
+}
+
+/** The space a node and its label take up. */
+function boxOf(n: GraphNode) {
+	const r = radiusOf(n);
+	const w = Math.max(2 * r, short(labelOf(n)).length * CHAR_W) + 6;
+	return { w, top: n.y - r, bottom: n.y + r + LABEL_GAP };
+}
+
+/**
+ * Spread the nodes out; `aspect` is the panel's height / width, so a tall sidebar
+ * gets a tall picture. Afterwards, nodes whose labels overlap are pushed apart.
+ */
+export function layout(nodes: GraphNode[], edges: GraphEdge[], aspect: number) {
 	const byId = new Map(nodes.map((n) => [n.id, n]));
+	const sx = 1 / Math.sqrt(aspect);
+	const sy = Math.sqrt(aspect);
 	// Start on rings: centre, tags, files; deterministic so the picture does not jump.
 	const tags = nodes.filter((n) => n.isTag && n.kind !== "center");
 	const files = nodes.filter((n) => !n.isTag && n.kind !== "center");
 	tags.forEach((n, i) => {
 		const a = (2 * Math.PI * i) / Math.max(1, tags.length);
-		n.x = 120 * Math.cos(a);
-		n.y = 120 * Math.sin(a);
+		n.x = 120 * Math.cos(a) * sx;
+		n.y = 120 * Math.sin(a) * sy;
 	});
 	files.forEach((n, i) => {
 		const a = (2 * Math.PI * (i + 0.5)) / Math.max(1, files.length);
-		n.x = 260 * Math.cos(a);
-		n.y = 260 * Math.sin(a);
+		n.x = 280 * Math.cos(a) * sx;
+		n.y = 280 * Math.sin(a) * sy;
 	});
 	const links: [GraphNode, GraphNode, number][] = [];
 	for (const e of edges) {
 		const a = byId.get(e.a);
 		const b = byId.get(e.b);
-		if (a && b) links.push([a, b, e.kind === "link" ? 140 : 90]);
+		if (!a || !b) continue;
+		const rest = e.kind === "link" ? 160 : a.kind === "center" || b.kind === "center" ? 100 : 130;
+		links.push([a, b, rest]);
 	}
+	const gx = 0.012 / sx;
+	const gy = 0.012 / sy;
 
-	for (let step = 0; step < 300; step++) {
-		const cool = 1 - step / 300;
+	for (let step = 0; step < 320; step++) {
+		const cool = 1 - step / 320;
 		for (let i = 0; i < nodes.length; i++) {
 			for (let j = i + 1; j < nodes.length; j++) {
 				const a = nodes[i];
@@ -200,7 +233,8 @@ export function layout(nodes: GraphNode[], edges: GraphEdge[]) {
 					dy = 0.1;
 					d2 = dx * dx + dy * dy;
 				}
-				const f = 2400 / d2;
+				// Tags push each other harder so their labels keep apart.
+				const f = ((a.isTag && b.isTag ? 2 : 1) * 6000) / d2;
 				const d = Math.sqrt(d2);
 				a.vx += (dx / d) * f;
 				a.vy += (dy / d) * f;
@@ -223,8 +257,8 @@ export function layout(nodes: GraphNode[], edges: GraphEdge[]) {
 				n.x = n.y = n.vx = n.vy = 0;
 				continue;
 			}
-			n.vx -= n.x * 0.01;
-			n.vy -= n.y * 0.01;
+			n.vx -= n.x * gx;
+			n.vy -= n.y * gy;
 			const v = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
 			const max = 30 * cool + 1;
 			if (v > max) {
@@ -237,20 +271,53 @@ export function layout(nodes: GraphNode[], edges: GraphEdge[]) {
 			n.vy *= 0.6;
 		}
 	}
+
+	// Push apart nodes whose label boxes overlap, along the shorter way out.
+	for (let pass = 0; pass < 120; pass++) {
+		let moved = false;
+		for (let i = 0; i < nodes.length; i++) {
+			for (let j = i + 1; j < nodes.length; j++) {
+				const a = nodes[i];
+				const b = nodes[j];
+				const ba = boxOf(a);
+				const bb = boxOf(b);
+				const ox = (ba.w + bb.w) / 2 - Math.abs(a.x - b.x);
+				const oy = Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top);
+				if (ox <= 0 || oy <= 0) continue;
+				moved = true;
+				const horizontal = ox < oy;
+				const amount = (horizontal ? ox : oy) / 2 + 0.5;
+				const sign = horizontal ? (a.x < b.x ? -1 : 1) : a.y < b.y ? -1 : 1;
+				const shareA = a.kind === "center" ? 0 : b.kind === "center" ? 2 : 1;
+				const shareB = 2 - shareA;
+				if (horizontal) {
+					a.x += sign * amount * shareA;
+					b.x -= sign * amount * shareB;
+				} else {
+					a.y += sign * amount * shareA;
+					b.y -= sign * amount * shareB;
+				}
+			}
+		}
+		if (!moved) break;
+	}
 }
 
 /* ---------- View ---------- */
 
-const LABEL_MAX = 22;
-const short = (s: string) => (s.length > LABEL_MAX ? s.slice(0, LABEL_MAX - 1) + "…" : s);
+/** Labels are drawn at 1:1; when the graph is larger than the panel it may shrink this far before parts go off-screen. */
+const MAX_SHRINK = 1.35;
 
 export class LocalGraphView extends ItemView {
 	/** A tag chosen by clicking it; null follows the active file. */
 	private focusTag: string | null = null;
 	private shownFile: string | null = null;
 	private svg: SVGSVGElement | null = null;
+	/** Pan offset in graph units and zoom factor, on top of the fitted view. */
 	private view = { x: 0, y: 0, scale: 1 };
 	private bounds = { x: -300, y: -300, w: 600, h: 600 };
+	/** The viewBox last applied, in graph units. */
+	private box = { x: 0, y: 0, w: 1, h: 1 };
 	private resizeObserver: ResizeObserver | null = null;
 
 	constructor(leaf: WorkspaceLeaf, private plugin: Wikiwurzel) {
@@ -272,6 +339,11 @@ export class LocalGraphView extends ItemView {
 		this.resizeObserver = new ResizeObserver(() => this.applyView());
 		this.resizeObserver.observe(this.contentEl);
 		this.render();
+	}
+
+	/** Obsidian calls this when the panel is shown or resized. */
+	onResize() {
+		this.applyView();
 	}
 
 	async onClose() {
@@ -341,7 +413,9 @@ export class LocalGraphView extends ItemView {
 			root.createDiv({ cls: "ww-graph-empty", text: T.graphNoTags() });
 			return;
 		}
-		layout(graph.nodes, graph.edges);
+		const rect = root.getBoundingClientRect();
+		const aspect = rect.width > 0 && rect.height > 80 ? Math.min(4, Math.max(0.5, (rect.height - 40) / rect.width)) : 1;
+		layout(graph.nodes, graph.edges, aspect);
 		this.draw(root, graph.nodes, graph.edges);
 	}
 
@@ -356,12 +430,19 @@ export class LocalGraphView extends ItemView {
 
 	private draw(root: HTMLElement, nodes: GraphNode[], edges: GraphEdge[]) {
 		const byId = new Map(nodes.map((n) => [n.id, n]));
-		const pad = 60;
-		const xs = nodes.map((n) => n.x);
-		const ys = nodes.map((n) => n.y);
-		const minX = Math.min(...xs) - pad;
-		const minY = Math.min(...ys) - pad;
-		this.bounds = { x: minX, y: minY, w: Math.max(...xs) + pad - minX, h: Math.max(...ys) + pad - minY };
+		const pad = 16;
+		let minX = Infinity;
+		let maxX = -Infinity;
+		let minY = Infinity;
+		let maxY = -Infinity;
+		for (const n of nodes) {
+			const half = short(labelOf(n)).length * 3.4 + 8;
+			minX = Math.min(minX, n.x - half);
+			maxX = Math.max(maxX, n.x + half);
+			minY = Math.min(minY, n.y - radiusOf(n));
+			maxY = Math.max(maxY, n.y + radiusOf(n) + 16);
+		}
+		this.bounds = { x: minX - pad, y: minY - pad, w: maxX - minX + 2 * pad, h: maxY - minY + 2 * pad };
 		this.view = { x: 0, y: 0, scale: 1 };
 
 		const svg = root.createSvg("svg", { cls: "ww-graph-svg" });
@@ -390,13 +471,13 @@ export class LocalGraphView extends ItemView {
 				cls: n.isTag ? ["ww-node", `is-${n.kind}`, "is-tag"] : ["ww-node", `is-${n.kind}`],
 				attr: { transform: `translate(${n.x},${n.y})` },
 			});
-			const r = n.kind === "center" ? 9 : n.isTag ? 6 + Math.min(6, Math.log2(1 + (n.count ?? 0)) / 2) : 5;
+			const r = radiusOf(n);
 			if (n.isTag) {
 				g.createSvg("rect", { attr: { x: -r, y: -r, width: 2 * r, height: 2 * r, rx: 3 } });
 			} else {
 				g.createSvg("circle", { attr: { r } });
 			}
-			const label = n.isTag && n.kind !== "center" ? `${n.label} (${n.count ?? 0})` : n.label;
+			const label = labelOf(n);
 			g.createSvg("text", { attr: { y: r + 12 } }).textContent = short(label);
 			g.createSvg("title").textContent = n.isTag ? `${n.label} — ${T.tagCount(n.count ?? 0)}` : n.target;
 
@@ -426,6 +507,8 @@ export class LocalGraphView extends ItemView {
 			});
 		}
 		this.enablePanZoom(svg);
+		// The panel's size is only known once the SVG is laid out; observing it applies the view then.
+		this.resizeObserver?.observe(svg);
 		this.applyView();
 	}
 
@@ -437,14 +520,19 @@ export class LocalGraphView extends ItemView {
 			"wheel",
 			(evt: WheelEvent) => {
 				evt.preventDefault();
-			const factor = Math.exp(-evt.deltaY * 0.0015);
-			const scale = Math.min(6, Math.max(0.3, this.view.scale * factor));
-			const rect = svg.getBoundingClientRect();
-			const px = (evt.clientX - rect.left) / rect.width - 0.5;
-			const py = (evt.clientY - rect.top) / rect.height - 0.5;
-			const k = 1 / this.view.scale - 1 / scale;
-			this.view.x += px * this.bounds.w * k;
-			this.view.y += py * this.bounds.h * k;
+				const rect = svg.getBoundingClientRect();
+				if (rect.width === 0 || rect.height === 0) return;
+				const scale = Math.min(6, Math.max(0.3, this.view.scale * Math.exp(-evt.deltaY * 0.0015)));
+				// Keep the point under the pointer where it is.
+				const px = (evt.clientX - rect.left) / rect.width;
+				const py = (evt.clientY - rect.top) / rect.height;
+				const wx = this.box.x + px * this.box.w;
+				const wy = this.box.y + py * this.box.h;
+				const ratio = this.view.scale / scale;
+				const w = this.box.w * ratio;
+				const h = this.box.h * ratio;
+				this.view.x = wx - px * w + w / 2 - (this.bounds.x + this.bounds.w / 2);
+				this.view.y = wy - py * h + h / 2 - (this.bounds.y + this.bounds.h / 2);
 				this.view.scale = scale;
 				this.applyView();
 			},
@@ -464,8 +552,8 @@ export class LocalGraphView extends ItemView {
 				this.dragged = true;
 				svg.addClass("is-panning");
 			}
-			if (!this.dragged) return;
-			const unit = Math.max(this.bounds.w / rect.width, this.bounds.h / rect.height) / this.view.scale;
+			if (!this.dragged || rect.width === 0) return;
+			const unit = this.box.w / rect.width;
 			this.view.x = start.vx - dx * unit;
 			this.view.y = start.vy - dy * unit;
 			this.applyView();
@@ -480,14 +568,22 @@ export class LocalGraphView extends ItemView {
 		svg.addEventListener("pointerleave", end);
 	}
 
+	/**
+	 * Show the graph at 1:1 so labels keep their size, centred; shrink a little
+	 * (up to MAX_SHRINK) when it is larger than the panel, then apply pan and zoom.
+	 */
 	private applyView() {
 		if (!this.svg) return;
-		const { x, y, w, h } = this.bounds;
-		const s = this.view.scale;
-		const cw = w / s;
-		const ch = h / s;
-		const cx = x + w / 2 + this.view.x - cw / 2;
-		const cy = y + h / 2 + this.view.y - ch / 2;
-		this.svg.setAttr("viewBox", `${cx} ${cy} ${cw} ${ch}`);
+		const rect = this.svg.getBoundingClientRect();
+		const cw = rect.width || 300;
+		const ch = rect.height || 300;
+		const fit = Math.min(MAX_SHRINK, Math.max(1, this.bounds.w / cw, this.bounds.h / ch));
+		const unit = fit / this.view.scale;
+		const w = cw * unit;
+		const h = ch * unit;
+		const cx = this.bounds.x + this.bounds.w / 2 + this.view.x;
+		const cy = this.bounds.y + this.bounds.h / 2 + this.view.y;
+		this.box = { x: cx - w / 2, y: cy - h / 2, w, h };
+		this.svg.setAttr("viewBox", `${this.box.x} ${this.box.y} ${w} ${h}`);
 	}
 }
