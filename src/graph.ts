@@ -472,11 +472,7 @@ export class LocalGraphView extends ItemView {
 				attr: { transform: `translate(${n.x},${n.y})` },
 			});
 			const r = radiusOf(n);
-			if (n.isTag) {
-				g.createSvg("rect", { attr: { x: -r, y: -r, width: 2 * r, height: 2 * r, rx: 3 } });
-			} else {
-				g.createSvg("circle", { attr: { r } });
-			}
+			g.createSvg("circle", { attr: { r } });
 			const label = labelOf(n);
 			g.createSvg("text", { attr: { y: r + 12 } }).textContent = short(label);
 			g.createSvg("title").textContent = n.isTag ? `${n.label} — ${T.tagCount(n.count ?? 0)}` : n.target;

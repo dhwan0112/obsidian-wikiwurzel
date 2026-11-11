@@ -557,22 +557,19 @@ export class GlobalGraphView extends ItemView {
 					if (dim !== faded) continue;
 					const x = n.x ?? 0;
 					const y = n.y ?? 0;
-					if (n.kind === "tag") ctx.rect(x - n.r, y - n.r, 2 * n.r, 2 * n.r);
-					else {
-						ctx.moveTo(x + n.r, y);
-						ctx.arc(x, y, n.r, 0, 2 * Math.PI);
-					}
+					ctx.moveTo(x + n.r, y);
+					ctx.arc(x, y, n.r, 0, 2 * Math.PI);
 				}
 				ctx.fill();
 			}
 		}
 		if (focus) {
+			// The hovered node is filled with the accent colour, without an outline.
 			ctx.globalAlpha = 1;
-			ctx.strokeStyle = this.colors.accent;
-			ctx.lineWidth = 2 / k;
+			ctx.fillStyle = this.colors.accent;
 			ctx.beginPath();
-			ctx.arc(focus.x ?? 0, focus.y ?? 0, focus.r + 2 / k, 0, 2 * Math.PI);
-			ctx.stroke();
+			ctx.arc(focus.x ?? 0, focus.y ?? 0, focus.r * 1.3, 0, 2 * Math.PI);
+			ctx.fill();
 		}
 
 		this.drawLabels(ctx, ratio, w, h, focus, near, inView);
@@ -614,9 +611,6 @@ export class GlobalGraphView extends ItemView {
 		ctx.font = `12px ${this.font}`;
 		ctx.textAlign = "center";
 		ctx.textBaseline = "top";
-		ctx.lineJoin = "round";
-		ctx.lineWidth = 3;
-		ctx.strokeStyle = this.colors.bg;
 
 		// A coarse grid of the boxes already taken makes the overlap test cheap.
 		const CELL = 40;
@@ -652,7 +646,6 @@ export class GlobalGraphView extends ItemView {
 			}
 			ctx.globalAlpha = focus && !important ? 0.35 : n.kind === "file" && !important ? 0.75 : 1;
 			ctx.fillStyle = n.kind === "tag" ? this.colors.tagText : this.colors.text;
-			ctx.strokeText(text, sx, sy);
 			ctx.fillText(text, sx, sy);
 			drawn++;
 		}
