@@ -166,6 +166,49 @@ export class FileTagStore {
 		return cache ? (getAllTags(cache) ?? []).map((t) => t.replace(/^#/, "")) : [];
 	}
 
+	/** The nearest folder at or above `folder` that has folder tags, or null. */
+	private nearestTagged(folder: string): string | null {
+		for (const f of folderChain(folder)) if (this.folderTags(f).length > 0) return f;
+		return null;
+	}
+
+	/**
+	 * Only the tags closest to a file: its own, those of its nearest tagged folder, and
+	 * note #tags that its folders do not already give it. Broader folder tags are
+	 * reached through tagParents() instead, which keeps the graph from forming huge stars.
+	 */
+	directTagsOf(path: string): string[] {
+		const out = this.ownTags(path);
+		const near = this.nearestTagged(folderOf(path));
+		if (near !== null) addUnique(out, this.folderTags(near));
+		const file = this.app.vault.getFileByPath(path);
+		if (file) {
+			const inherited = new Set(this.fileTagsOf(path).map((t) => t.toLowerCase()));
+			addUnique(out, this.noteTagsOf(file).filter((t) => !inherited.has(t.toLowerCase())));
+		}
+		return out;
+	}
+
+	/** [narrower, broader] pairs: each tagged folder's tags under its nearest tagged parent's tags. */
+	tagParents(): [string, string][] {
+		const out: [string, string][] = [];
+		const seen = new Set<string>();
+		for (const folder of this.folders.keys()) {
+			if (!folder || this.folderTags(folder).length === 0) continue;
+			const parent = this.nearestTagged(folderOf(folder));
+			if (parent === null) continue;
+			for (const child of this.folderTags(folder)) {
+				for (const up of this.folderTags(parent)) {
+					const key = child.toLowerCase() + "|" + up.toLowerCase();
+					if (child.toLowerCase() === up.toLowerCase() || seen.has(key)) continue;
+					seen.add(key);
+					out.push([child, up]);
+				}
+			}
+		}
+		return out;
+	}
+
 	allTagsOf(path: string): string[] {
 		const out = this.fileTagsOf(path);
 		const file = this.app.vault.getFileByPath(path);

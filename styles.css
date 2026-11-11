@@ -238,3 +238,62 @@
 .ww-graph-svg.is-hovering .ww-node:not(.is-hover) {
   opacity: 0.55;
 }
+
+/* ---------- Wiki graph ---------- */
+
+.ww-global {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--graph-background, var(--background-primary));
+}
+.ww-global-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+.ww-global-canvas.is-pointing {
+  cursor: pointer;
+}
+.ww-global-controls {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 240px;
+  max-width: calc(100% - 24px);
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background-color: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  font-size: 13px;
+}
+.ww-global-filter {
+  width: 100%;
+}
+.ww-global-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+.ww-global-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.ww-global-status {
+  flex: 1 1 auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

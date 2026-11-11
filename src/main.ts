@@ -1,5 +1,6 @@
 import { App, Events, Plugin, PluginSettingTab, SettingDefinitionItem, TFolder, debounce } from "obsidian";
 import { API_VERSION, EVENT_CHANGED, EVENT_READY, EVENT_REQUEST, EVENT_UNLOAD, WurzelApi } from "./api";
+import { GLOBAL_GRAPH_VIEW, GlobalGraphView } from "./globalgraph";
 import { GRAPH_VIEW, LocalGraphView } from "./graph";
 import { T } from "./i18n";
 import { FileTagStore, folderOf } from "./store";
@@ -14,6 +15,16 @@ export interface WurzelSettings {
 	graphShowLinks: boolean;
 	/** Comma-separated tags left out of the graph, e.g. very broad ones. */
 	graphHiddenTags: string;
+	globalShowTags: boolean;
+	globalShowOrphans: boolean;
+	globalShowLinks: boolean;
+	globalDenseTags: boolean;
+	/** Comma-separated file extensions shown in the wiki graph; empty shows every file. */
+	globalExtensions: string;
+	globalFilter: string;
+	globalRepel: number;
+	globalGravity: number;
+	globalLinkDistance: number;
 }
 
 const DEFAULT_SETTINGS: WurzelSettings = {
@@ -21,6 +32,15 @@ const DEFAULT_SETTINGS: WurzelSettings = {
 	graphMaxFiles: 40,
 	graphShowLinks: true,
 	graphHiddenTags: "",
+	globalShowTags: true,
+	globalShowOrphans: true,
+	globalShowLinks: true,
+	globalDenseTags: false,
+	globalExtensions: "md, canvas, pdf, docx, doc, pptx, ppt, xlsx, xls, epub, png, jpg, jpeg, gif, svg, webp",
+	globalFilter: "",
+	globalRepel: 1,
+	globalGravity: 1,
+	globalLinkDistance: 1,
 };
 
 export default class Wikiwurzel extends Plugin {
@@ -36,7 +56,10 @@ export default class Wikiwurzel extends Plugin {
 	private announceChange = debounce(() => {
 		this.bus.trigger(EVENT_CHANGED);
 		this.graphViews().forEach((v) => v.render());
+		this.refreshGlobal();
 	}, 50, true);
+	private refreshGlobal = debounce(() => this.globalViews().forEach((v) => v.rebuild()), 1000, true);
+	private groups: { query: string; color: string }[] = [];
 
 	async onload() {
 		const data = (await this.loadData()) as Partial<WurzelSettings> | null;
@@ -47,6 +70,11 @@ export default class Wikiwurzel extends Plugin {
 		this.api = this.createApi();
 
 		this.registerView(GRAPH_VIEW, (leaf) => new LocalGraphView(leaf, this));
+		this.registerView(GLOBAL_GRAPH_VIEW, (leaf) => new GlobalGraphView(leaf, this));
+		this.addCommand({ id: "open-wiki-graph", name: T.cmdGlobal(), callback: () => void this.openGlobal() });
+		this.addRibbonIcon("waypoints", T.cmdGlobal(), () => void this.openGlobal());
+		await this.loadColorGroups();
+		this.registerEvent(this.app.metadataCache.on("resolved", () => this.refreshGlobal()));
 		this.addCommand({ id: "open-graph", name: T.cmdGraph(), callback: () => void this.openGraph() });
 		this.addSettingTab(new WurzelSettingTab(this.app, this));
 		const follow = () => {
@@ -153,9 +181,57 @@ export default class Wikiwurzel extends Plugin {
 		if (view instanceof LocalGraphView) view.followFile(workspace.getActiveFile()?.path ?? null);
 	}
 
+	globalViews(): GlobalGraphView[] {
+		return this.app.workspace
+			.getLeavesOfType(GLOBAL_GRAPH_VIEW)
+			.map((l) => l.view)
+			.filter((v): v is GlobalGraphView => v instanceof GlobalGraphView);
+	}
+
+	async openGlobal() {
+		const { workspace } = this.app;
+		const existing = workspace.getLeavesOfType(GLOBAL_GRAPH_VIEW)[0];
+		if (existing) {
+			await workspace.revealLeaf(existing);
+			return;
+		}
+		await this.loadColorGroups();
+		const leaf = workspace.getLeaf("tab");
+		await leaf.setViewState({ type: GLOBAL_GRAPH_VIEW, active: true });
+		await workspace.revealLeaf(leaf);
+	}
+
+	/** Colour groups are taken from the core graph's settings (read only). */
+	private async loadColorGroups() {
+		try {
+			const raw = await this.app.vault.adapter.read(`${this.app.vault.configDir}/graph.json`);
+			const data = JSON.parse(raw) as { colorGroups?: { query?: unknown; color?: { rgb?: unknown } }[] };
+			const out: { query: string; color: string }[] = [];
+			for (const g of data.colorGroups ?? []) {
+				const rgb = g.color?.rgb;
+				if (typeof g.query === "string" && typeof rgb === "number") {
+					out.push({ query: g.query, color: "#" + rgb.toString(16).padStart(6, "0") });
+				}
+			}
+			this.groups = out;
+		} catch {
+			this.groups = [];
+		}
+	}
+
+	colorGroups() {
+		return this.groups;
+	}
+
+	/** Save without redrawing (the graph redraws itself). */
+	async saveSettingsQuietly() {
+		await this.saveData(this.settings);
+	}
+
 	async saveSettings() {
 		await this.saveData(this.settings);
 		this.graphViews().forEach((v) => v.render());
+		this.globalViews().forEach((v) => v.rebuild());
 	}
 
 	openSearch(query = "") {
@@ -194,6 +270,31 @@ class WurzelSettingTab extends PluginSettingTab {
 
 	getSettingDefinitions(): SettingDefinitionItem<SettingKey>[] {
 		return [
+			{
+				type: "group",
+				heading: "Wiki graph",
+				items: [
+					{
+						name: "File types",
+						desc: "Comma-separated extensions shown in the wiki graph. Leave empty to show every file, including program inputs and outputs.",
+						control: { type: "text", key: "globalExtensions", placeholder: "md, pdf, png" },
+					},
+					{
+						name: "Repel force",
+						desc: "How strongly nodes push each other apart.",
+						control: { type: "slider", key: "globalRepel", min: 0.2, max: 4, step: 0.1 },
+					},
+					{
+						name: "Center force",
+						desc: "How strongly the graph is pulled together.",
+						control: { type: "slider", key: "globalGravity", min: 0, max: 4, step: 0.1 },
+					},
+					{
+						name: "Link distance",
+						control: { type: "slider", key: "globalLinkDistance", min: 0.3, max: 4, step: 0.1 },
+					},
+				],
+			},
 			{
 				type: "group",
 				heading: "Tag graph",
