@@ -1,7 +1,7 @@
 {
   "id": "wikiwurzel",
   "name": "Wikiwurzel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.13.0",
   "description": "Tag any file, PDFs and images included, with tags kept in hidden .tag files, and find notes and files by tag.",
   "author": "Kim Donghwan",

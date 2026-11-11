@@ -1,6 +1,6 @@
 {
   "name": "wikiwurzel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tag any file in Obsidian, PDFs included, and find files by tag",
   "main": "main.js",
   "scripts": {
