@@ -1,0 +1,131 @@
+/*
+ * Wikiwurzel
+ * Every color is a theme variable, so the plugin follows any theme.
+ */
+
+/* ---------- Tags ---------- */
+
+.ww-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.ww-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 22px;
+}
+.ww-chip-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ww-chip-name.is-clickable {
+  color: var(--link-color);
+  cursor: pointer;
+}
+.ww-chip-remove {
+  display: flex;
+  flex: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.ww-chip-remove:hover {
+  color: var(--text-normal);
+}
+.ww-chip-remove .svg-icon {
+  width: 13px;
+  height: 13px;
+}
+.ww-chips .ww-input {
+  flex: 1 1 6em;
+  min-width: 6em;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+/* ---------- Tag editor ---------- */
+
+.ww-target {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.ww-row + .ww-row {
+  margin-top: 12px;
+}
+.ww-row-label {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.ww-hint {
+  margin-top: 16px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* ---------- Tag search ---------- */
+
+.ww-search .ww-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.ww-result-icon {
+  display: flex;
+  flex: none;
+  padding-top: 2px;
+  color: var(--text-muted);
+}
+.ww-result-icon .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+.ww-result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ww-result-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ww-result-path {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.ww-result.is-tag .ww-result-name {
+  flex: 1 1 auto;
+  color: var(--link-color);
+}
+.ww-result-meta {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.ww-result.is-more {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.ww-search .ww-chip {
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+}
