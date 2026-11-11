@@ -74,8 +74,6 @@ function groupMatcher(groups: ColorGroup[]) {
 
 /* ---------- View ---------- */
 
-const LABEL_ZOOM = 0.9;
-
 export class GlobalGraphView extends ItemView {
 	private canvas!: HTMLCanvasElement;
 	private ctx!: CanvasRenderingContext2D;
@@ -91,7 +89,9 @@ export class GlobalGraphView extends ItemView {
 	private panning: { x: number; y: number; zx: number; zy: number } | null = null;
 	private moved = false;
 	private resizeObserver: ResizeObserver | null = null;
-	private colors = { note: "#888", file: "#d4a72c", tag: "#3fa34d", line: "#555", text: "#ddd", accent: "#7c5cff", bg: "#1e1e1e" };
+	private colors = { note: "#888", file: "#d4a72c", tag: "#3fa34d", line: "#555", text: "#ddd", tagText: "#aaa", accent: "#7c5cff", bg: "#1e1e1e" };
+	/** Canvas cannot read CSS variables, so the interface font is resolved once. */
+	private font = "sans-serif";
 	private filterInput!: HTMLInputElement;
 	private statusEl!: HTMLElement;
 	/** Saved positions from the last session, used for nodes seen for the first time in this one. */
@@ -241,9 +241,16 @@ export class GlobalGraphView extends ItemView {
 			tag: v("--graph-node-tag", v("--color-green", "#3fa34d")),
 			line: v("--graph-line", v("--background-modifier-border-hover", "#555")),
 			text: v("--graph-text", v("--text-normal", "#ddd")),
+			tagText: v("--text-muted", "#aaa"),
 			accent: v("--graph-node-focused", v("--interactive-accent", "#7c5cff")),
 			bg: v("--graph-background", v("--background-primary", "#1e1e1e")),
 		};
+		// Keep only well-formed family names; one bad entry makes the canvas ignore the whole font.
+		const families = (v("--font-interface", "") || style.fontFamily || "")
+			.split(",")
+			.map((f) => f.replace(/\s+/g, " ").trim())
+			.filter((f) => f.length > 0 && /^("[^"?]+"|'[^'?]+'|[\w -]+)$/.test(f));
+		this.font = families.length > 0 ? families.join(", ") : "sans-serif";
 	}
 
 	/* ----- Building the graph ----- */
@@ -568,28 +575,88 @@ export class GlobalGraphView extends ItemView {
 			ctx.stroke();
 		}
 
-		// Labels: all of them when zoomed in; otherwise tags with many files, and the hovered node's neighbourhood.
-		ctx.globalAlpha = 1;
-		ctx.fillStyle = this.colors.text;
-		ctx.strokeStyle = this.colors.bg;
-		ctx.lineWidth = 3 / k;
-		ctx.lineJoin = "round";
+		this.drawLabels(ctx, ratio, w, h, focus, near, inView);
+	}
+
+	/**
+	 * Labels, most important first, skipping any that would overlap one already drawn:
+	 * the hovered node and its neighbours, then tags by size, then notes, then other files.
+	 * Drawn in screen pixels so the text stays sharp and the same size at every zoom.
+	 */
+	private drawLabels(
+		ctx: CanvasRenderingContext2D,
+		ratio: number,
+		w: number,
+		h: number,
+		focus: GNode | null,
+		near: Set<GNode> | null,
+		inView: (n: GNode) => boolean,
+	) {
+		const { x: zx, y: zy, k } = this.zoom;
+		const rank = (n: GNode) => {
+			if (n === focus) return 4e9;
+			if (near?.has(n)) return 3e9 + n.degree;
+			if (n.kind === "tag") return 2e9 + n.degree;
+			if (n.kind === "note") return 1e9 + n.degree;
+			return n.degree;
+		};
+		// Far out, only tags (and the hovered neighbourhood) get names; files join in as you zoom in.
+		const candidates = this.nodes.filter((n) => {
+			if (!inView(n)) return false;
+			if (n === focus || near?.has(n)) return true;
+			if (n.kind === "tag") return k >= 0.15 || n.degree >= 20;
+			if (n.kind === "note") return k >= 0.6;
+			return k >= 1.2;
+		});
+		candidates.sort((a, b) => rank(b) - rank(a));
+
+		ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+		ctx.font = `12px ${this.font}`;
 		ctx.textAlign = "center";
 		ctx.textBaseline = "top";
-		ctx.font = `${12 / k}px var(--font-interface, sans-serif)`;
-		const big = this.nodes.filter((n) => n.kind === "tag").sort((a, b) => b.degree - a.degree).slice(0, Math.round(12 * k));
-		const labelled = new Set<GNode>(k >= LABEL_ZOOM ? this.nodes.filter(inView) : big);
-		if (focus) {
-			labelled.add(focus);
-			near?.forEach((n) => labelled.add(n));
+		ctx.lineJoin = "round";
+		ctx.lineWidth = 3;
+		ctx.strokeStyle = this.colors.bg;
+
+		// A coarse grid of the boxes already taken makes the overlap test cheap.
+		const CELL = 40;
+		const taken = new Map<number, { x0: number; y0: number; x1: number; y1: number }[]>();
+		const cells = (b: { x0: number; y0: number; x1: number; y1: number }) => {
+			const out: number[] = [];
+			for (let cx = Math.floor(b.x0 / CELL); cx <= Math.floor(b.x1 / CELL); cx++) {
+				for (let cy = Math.floor(b.y0 / CELL); cy <= Math.floor(b.y1 / CELL); cy++) out.push(cx * 100003 + cy);
+			}
+			return out;
+		};
+		const MAX_LABELS = 400;
+		let drawn = 0;
+		for (const n of candidates) {
+			if (drawn >= MAX_LABELS) break;
+			const text = n.label.length > 32 ? n.label.slice(0, 31) + "…" : n.label;
+			const sx = w / 2 + zx + (n.x ?? 0) * k;
+			const sy = h / 2 + zy + ((n.y ?? 0) + n.r) * k + 3;
+			const half = ctx.measureText(text).width / 2 + 3;
+			const box = { x0: sx - half, y0: sy - 1, x1: sx + half, y1: sy + 15 };
+			if (box.x1 < 0 || box.x0 > w || box.y1 < 0 || box.y0 > h) continue;
+			const keys = cells(box);
+			const important = n === focus || near?.has(n);
+			const clash = keys.some((key) =>
+				(taken.get(key) ?? []).some((o) => box.x0 < o.x1 && o.x0 < box.x1 && box.y0 < o.y1 && o.y0 < box.y1),
+			);
+			// The hovered neighbourhood always shows; everything else only where there is room.
+			if (clash && !important) continue;
+			for (const key of keys) {
+				const list = taken.get(key);
+				if (list) list.push(box);
+				else taken.set(key, [box]);
+			}
+			ctx.globalAlpha = focus && !important ? 0.35 : n.kind === "file" && !important ? 0.75 : 1;
+			ctx.fillStyle = n.kind === "tag" ? this.colors.tagText : this.colors.text;
+			ctx.strokeText(text, sx, sy);
+			ctx.fillText(text, sx, sy);
+			drawn++;
 		}
-		for (const n of labelled) {
-			if (!inView(n)) continue;
-			const text = n.label.length > 28 ? n.label.slice(0, 27) + "…" : n.label;
-			const y = (n.y ?? 0) + n.r + 2 / k;
-			ctx.strokeText(text, n.x ?? 0, y);
-			ctx.fillText(text, n.x ?? 0, y);
-		}
+		ctx.globalAlpha = 1;
 	}
 
 	/** Small arrowheads where note links arrive. */
