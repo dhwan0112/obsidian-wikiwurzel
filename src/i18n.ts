@@ -35,6 +35,11 @@ export const T = {
 	globalDense: () => (ko() ? "모든 상위 태그에 연결" : "Link every inherited tag"),
 	globalRelayout: () => (ko() ? "다시 배치" : "Lay out again"),
 	globalStatus: (n: number, e: number) => (ko() ? `노드 ${n} · 연결 ${e}` : `${n} nodes · ${e} links`),
+	globalFold: () => (ko() ? "설정 접기/펼치기" : "Show or hide the controls"),
+	globalArrows: () => (ko() ? "링크 방향 화살표" : "Arrows"),
+	forceRepel: () => (ko() ? "밀어내기" : "Repel"),
+	forceCenter: () => (ko() ? "중심으로" : "Center"),
+	forceDistance: () => (ko() ? "연결 거리" : "Link distance"),
 	cmdGlobal: () => (ko() ? "위키 그래프 열기" : "Open wiki graph"),
 	cmdReload: () => (ko() ? "태그 파일 다시 읽기" : "Reload tag files"),
 };

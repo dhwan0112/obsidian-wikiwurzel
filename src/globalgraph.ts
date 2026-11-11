@@ -94,6 +94,9 @@ export class GlobalGraphView extends ItemView {
 	private colors = { note: "#888", file: "#d4a72c", tag: "#3fa34d", line: "#555", text: "#ddd", accent: "#7c5cff", bg: "#1e1e1e" };
 	private filterInput!: HTMLInputElement;
 	private statusEl!: HTMLElement;
+	/** Saved positions from the last session, used for nodes seen for the first time in this one. */
+	private saved: Map<string, [number, number]> | null = null;
+	private settledOnce = false;
 
 	constructor(leaf: WorkspaceLeaf, private plugin: Wikiwurzel) {
 		super(leaf);
@@ -122,10 +125,16 @@ export class GlobalGraphView extends ItemView {
 		this.resizeObserver = new ResizeObserver(() => this.resize());
 		this.resizeObserver.observe(root);
 		this.readColors();
+		const layout = await this.plugin.loadLayout();
+		if (layout) {
+			this.saved = new Map(Object.entries(layout.positions));
+			this.zoom = layout.zoom;
+		}
 		this.rebuild();
 	}
 
 	async onClose() {
+		this.savePositions();
 		this.stop();
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
@@ -140,7 +149,35 @@ export class GlobalGraphView extends ItemView {
 	private buildControls(root: HTMLElement) {
 		const s = this.plugin.settings;
 		const panel = root.createDiv({ cls: "ww-global-controls" });
-		this.filterInput = panel.createEl("input", {
+		panel.toggleClass("is-collapsed", s.globalControlsCollapsed);
+
+		// Header: always visible; click it to fold the rest away.
+		const head = panel.createDiv({ cls: "ww-global-head" });
+		const fold = head.createSpan({
+			cls: "ww-graph-button ww-global-fold",
+			attr: { role: "button", "aria-label": T.globalFold(), "aria-expanded": String(!s.globalControlsCollapsed) },
+		});
+		setIcon(fold, s.globalControlsCollapsed ? "chevron-right" : "chevron-down");
+		this.statusEl = head.createSpan({ cls: "ww-global-status" });
+		const fit = head.createSpan({ cls: "ww-graph-button", attr: { "aria-label": T.graphFit(), role: "button" } });
+		setIcon(fit, "maximize");
+		fit.addEventListener("click", () => this.fit());
+		const again = head.createSpan({ cls: "ww-graph-button", attr: { "aria-label": T.globalRelayout(), role: "button" } });
+		setIcon(again, "refresh-cw");
+		again.addEventListener("click", () => this.rebuild(true));
+		const toggleFold = () => {
+			const collapsed = !this.plugin.settings.globalControlsCollapsed;
+			this.plugin.settings.globalControlsCollapsed = collapsed;
+			void this.plugin.saveSettingsQuietly();
+			panel.toggleClass("is-collapsed", collapsed);
+			fold.setAttr("aria-expanded", String(!collapsed));
+			setIcon(fold, collapsed ? "chevron-right" : "chevron-down");
+		};
+		fold.addEventListener("click", toggleFold);
+		this.statusEl.addEventListener("click", toggleFold);
+
+		const body = panel.createDiv({ cls: "ww-global-body" });
+		this.filterInput = body.createEl("input", {
 			cls: "ww-global-filter",
 			attr: { type: "search", placeholder: T.globalFilter(), value: s.globalFilter },
 		});
@@ -151,31 +188,47 @@ export class GlobalGraphView extends ItemView {
 		}, 300, true);
 		this.filterInput.addEventListener("input", refilter);
 
-		const toggles: [keyof typeof s, string][] = [
-			["globalShowTags", T.globalTags()],
-			["globalShowOrphans", T.globalOrphans()],
-			["globalShowLinks", T.globalLinks()],
-			["globalDenseTags", T.globalDense()],
+		const toggles: [keyof typeof s, string, boolean][] = [
+			["globalShowTags", T.globalTags(), true],
+			["globalShowOrphans", T.globalOrphans(), true],
+			["globalShowLinks", T.globalLinks(), true],
+			["globalArrows", T.globalArrows(), false],
+			["globalDenseTags", T.globalDense(), true],
 		];
-		for (const [key, label] of toggles) {
-			const row = panel.createEl("label", { cls: "ww-global-toggle" });
+		for (const [key, label, rebuilds] of toggles) {
+			const row = body.createEl("label", { cls: "ww-global-toggle" });
 			const box = row.createEl("input", { attr: { type: "checkbox" } });
 			box.checked = Boolean(s[key]);
 			row.createSpan({ text: label });
 			box.addEventListener("change", () => {
 				(this.plugin.settings as unknown as Record<string, unknown>)[key] = box.checked;
 				void this.plugin.saveSettingsQuietly();
-				this.rebuild();
+				if (rebuilds) this.rebuild();
+				else this.kick();
 			});
 		}
-		const bar = panel.createDiv({ cls: "ww-global-bar" });
-		this.statusEl = bar.createSpan({ cls: "ww-global-status" });
-		const fit = bar.createSpan({ cls: "ww-graph-button", attr: { "aria-label": T.graphFit(), role: "button" } });
-		setIcon(fit, "maximize");
-		fit.addEventListener("click", () => this.fit());
-		const again = bar.createSpan({ cls: "ww-graph-button", attr: { "aria-label": T.globalRelayout(), role: "button" } });
-		setIcon(again, "refresh-cw");
-		again.addEventListener("click", () => this.rebuild(true));
+
+		// Forces, applied live.
+		const forces = body.createDiv({ cls: "ww-global-forces" });
+		const sliders: [keyof typeof s, string, number, number][] = [
+			["globalRepel", T.forceRepel(), 0.2, 4],
+			["globalGravity", T.forceCenter(), 0, 4],
+			["globalLinkDistance", T.forceDistance(), 0.3, 4],
+		];
+		for (const [key, label, min, max] of sliders) {
+			const row = forces.createDiv({ cls: "ww-global-slider" });
+			row.createSpan({ text: label });
+			const input = row.createEl("input", {
+				attr: { type: "range", min: String(min), max: String(max), step: "0.1", "aria-label": label },
+			});
+			input.value = String(s[key]);
+			input.addEventListener("input", () => {
+				(this.plugin.settings as unknown as Record<string, unknown>)[key] = Number(input.value);
+				this.applyForces();
+				this.kick(0.5);
+			});
+			input.addEventListener("change", () => void this.plugin.saveSettingsQuietly());
+		}
 	}
 
 	/** Pick up the theme's graph colours so the graph matches the core one. */
@@ -243,9 +296,13 @@ export class GlobalGraphView extends ItemView {
 			if (!n) {
 				n = make();
 				const prev = fresh ? undefined : old.get(id);
+				const stored = fresh ? undefined : this.saved?.get(id);
 				if (prev) {
 					n.x = prev.x;
 					n.y = prev.y;
+				} else if (stored) {
+					n.x = stored[0];
+					n.y = stored[1];
 				}
 				nodes.set(id, n);
 			}
@@ -328,30 +385,49 @@ export class GlobalGraphView extends ItemView {
 			this.neighbours.get(l.target)?.add(l.source);
 		}
 		this.statusEl?.setText(T.globalStatus(list.length, this.links.length));
-		this.startSimulation(fresh || old.size === 0);
+		// Restored from the last session: only settle gently instead of starting over.
+		const restored = !fresh && old.size === 0 && this.saved !== null && list.filter((n) => this.saved?.has(n.id)).length > list.length * 0.8;
+		if (fresh) this.saved = null;
+		this.startSimulation(fresh || (old.size === 0 && !restored), restored);
+	}
+
+	/** Remember positions and zoom for the next time the graph opens. */
+	savePositions() {
+		if (this.nodes.length === 0) return;
+		const positions: Record<string, [number, number]> = {};
+		for (const n of this.nodes) positions[n.id] = [Math.round(n.x ?? 0), Math.round(n.y ?? 0)];
+		void this.plugin.saveLayout({ positions, zoom: { ...this.zoom } });
 	}
 
 	/* ----- Simulation ----- */
 
-	private startSimulation(firstTime: boolean) {
+	private startSimulation(firstTime: boolean, restored = false) {
 		this.stop();
-		const s = this.plugin.settings;
 		const sim = forceSimulation<GNode, GLink>(this.nodes)
-			.force(
-				"link",
-				forceLink<GNode, GLink>(this.links)
-					.distance((l) => (l.kind === "parent" ? 60 : l.kind === "link" ? 50 : 30) * s.globalLinkDistance)
-					.strength((l) => (l.kind === "parent" ? 0.4 : 0.7) / Math.min(l.source.degree, l.target.degree)),
-			)
-			.force("charge", forceManyBody<GNode>().strength((n) => -(n.kind === "tag" ? 60 : 18) * s.globalRepel).theta(0.9).distanceMax(900))
-			.force("x", forceX<GNode>(0).strength(0.03 * s.globalGravity))
-			.force("y", forceY<GNode>(0).strength(0.03 * s.globalGravity))
-			.alpha(firstTime ? 1 : 0.4)
+			.alpha(firstTime ? 1 : restored ? 0.05 : 0.4)
 			.alphaDecay(0.03)
 			.stop();
 		this.sim = sim;
+		this.applyForces();
 		if (firstTime) this.zoom = { x: 0, y: 0, k: 0.5 };
+		this.settledOnce = false;
 		this.loop();
+	}
+
+	/** (Re)set the forces from the current settings. */
+	private applyForces() {
+		const sim = this.sim;
+		if (!sim) return;
+		const s = this.plugin.settings;
+		sim.force(
+			"link",
+			forceLink<GNode, GLink>(this.links)
+				.distance((l) => (l.kind === "parent" ? 60 : l.kind === "link" ? 50 : 30) * s.globalLinkDistance)
+				.strength((l) => (l.kind === "parent" ? 0.4 : 0.7) / Math.min(l.source.degree, l.target.degree)),
+		)
+			.force("charge", forceManyBody<GNode>().strength((n) => -(n.kind === "tag" ? 60 : 18) * s.globalRepel).theta(0.9).distanceMax(900))
+			.force("x", forceX<GNode>(0).strength(0.03 * s.globalGravity))
+			.force("y", forceY<GNode>(0).strength(0.03 * s.globalGravity));
 	}
 
 	private stop() {
@@ -371,6 +447,11 @@ export class GlobalGraphView extends ItemView {
 		}
 		this.draw();
 		if (busy || this.dragging) this.frame = this.containerEl.win.requestAnimationFrame(this.loop);
+		else if (!this.settledOnce) {
+			// Settled: remember where everything ended up.
+			this.settledOnce = true;
+			this.savePositions();
+		}
 	};
 
 	/** Wake the loop after interaction. */
@@ -448,6 +529,7 @@ export class GlobalGraphView extends ItemView {
 			}
 			ctx.stroke();
 		}
+		if (this.plugin.settings.globalArrows && k >= 0.5) this.drawArrows(ctx, k, focus, inView);
 
 		// Nodes, grouped by colour.
 		const groups = new Map<string, GNode[]>();
@@ -508,6 +590,33 @@ export class GlobalGraphView extends ItemView {
 			ctx.strokeText(text, n.x ?? 0, y);
 			ctx.fillText(text, n.x ?? 0, y);
 		}
+	}
+
+	/** Small arrowheads where note links arrive. */
+	private drawArrows(ctx: CanvasRenderingContext2D, k: number, focus: GNode | null, inView: (n: GNode) => boolean) {
+		const size = 6 / k;
+		ctx.fillStyle = this.colors.line;
+		ctx.globalAlpha = focus ? 0.3 : 0.8;
+		ctx.beginPath();
+		for (const l of this.links) {
+			if (l.kind !== "link" || !inView(l.target)) continue;
+			const sx = l.source.x ?? 0;
+			const sy = l.source.y ?? 0;
+			const tx = l.target.x ?? 0;
+			const ty = l.target.y ?? 0;
+			const d = Math.hypot(tx - sx, ty - sy);
+			if (d < l.target.r + size * 2) continue;
+			const ux = (tx - sx) / d;
+			const uy = (ty - sy) / d;
+			const ax = tx - ux * (l.target.r + 1 / k);
+			const ay = ty - uy * (l.target.r + 1 / k);
+			ctx.moveTo(ax, ay);
+			ctx.lineTo(ax - ux * size - uy * size * 0.5, ay - uy * size + ux * size * 0.5);
+			ctx.lineTo(ax - ux * size + uy * size * 0.5, ay - uy * size - ux * size * 0.5);
+			ctx.closePath();
+		}
+		ctx.fill();
+		ctx.globalAlpha = 1;
 	}
 
 	/* ----- Pointer ----- */
@@ -598,6 +707,7 @@ export class GlobalGraphView extends ItemView {
 			this.dragging = null;
 			this.panning = null;
 			if (!this.moved && n) this.activate(n, evt);
+			if (this.moved) this.settledOnce = false;
 			this.kick();
 		});
 		c.addEventListener("pointerleave", () => {

@@ -25,6 +25,13 @@ export interface WurzelSettings {
 	globalRepel: number;
 	globalGravity: number;
 	globalLinkDistance: number;
+	globalArrows: boolean;
+	globalControlsCollapsed: boolean;
+}
+
+export interface SavedLayout {
+	positions: Record<string, [number, number]>;
+	zoom: { x: number; y: number; k: number };
 }
 
 const DEFAULT_SETTINGS: WurzelSettings = {
@@ -41,7 +48,11 @@ const DEFAULT_SETTINGS: WurzelSettings = {
 	globalRepel: 1,
 	globalGravity: 1,
 	globalLinkDistance: 1,
+	globalArrows: false,
+	globalControlsCollapsed: false,
 };
+
+const LAYOUT_FILE = "graph-layout.json";
 
 export default class Wikiwurzel extends Plugin {
 	settings: WurzelSettings = DEFAULT_SETTINGS;
@@ -216,6 +227,29 @@ export default class Wikiwurzel extends Plugin {
 			this.groups = out;
 		} catch {
 			this.groups = [];
+		}
+	}
+
+	private layoutPath() {
+		return `${this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`}/${LAYOUT_FILE}`;
+	}
+
+	/** Node positions and zoom from the last time the wiki graph was open. */
+	async loadLayout(): Promise<SavedLayout | null> {
+		try {
+			const data = JSON.parse(await this.app.vault.adapter.read(this.layoutPath())) as Partial<SavedLayout>;
+			if (!data.positions || !data.zoom) return null;
+			return { positions: data.positions, zoom: data.zoom };
+		} catch {
+			return null;
+		}
+	}
+
+	async saveLayout(layout: SavedLayout) {
+		try {
+			await this.app.vault.adapter.write(this.layoutPath(), JSON.stringify(layout));
+		} catch (err) {
+			console.error("Wikiwurzel: could not save the graph layout", err);
 		}
 	}
 
