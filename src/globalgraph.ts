@@ -431,10 +431,11 @@ export class GlobalGraphView extends ItemView {
 		sim.force(
 			"link",
 			forceLink<GNode, GLink>(this.links)
-				.distance((l) => (l.kind === "parent" ? 60 : l.kind === "link" ? 50 : 30) * s.globalLinkDistance)
+				.distance((l) => (l.kind === "parent" ? 45 : l.kind === "link" ? 35 : 18) * s.globalLinkDistance)
 				.strength((l) => (l.kind === "parent" ? 0.4 : 0.7) / Math.min(l.source.degree, l.target.degree)),
 		)
-			.force("charge", forceManyBody<GNode>().strength((n) => -(n.kind === "tag" ? 60 : 18) * s.globalRepel).theta(0.9).distanceMax(900))
+			// Short-range repulsion only: clusters keep their own space without pushing the whole graph apart.
+			.force("charge", forceManyBody<GNode>().strength((n) => -(n.kind === "tag" ? 40 : 9) * s.globalRepel).theta(0.9).distanceMax(250))
 			// Tags with many connections are pulled to the middle harder, so the big hubs sit
 			// at the centre and smaller topics around them.
 			.force("x", forceX<GNode>(0).strength((n) => 0.03 * s.globalGravity * this.pull(n)))
@@ -613,9 +614,10 @@ export class GlobalGraphView extends ItemView {
 		const candidates = this.nodes.filter((n) => {
 			if (!inView(n)) return false;
 			if (n === focus || near?.has(n)) return true;
-			if (n.kind === "tag") return k >= 0.15 || n.degree >= 20;
-			if (n.kind === "note") return k >= 0.6;
-			return k >= 1.2;
+			// Names appear only when zoomed in (tags first), or around the node under the pointer.
+			if (n.kind === "tag") return k >= 0.8;
+			if (n.kind === "note") return k >= 1.6;
+			return k >= 2.6;
 		});
 		candidates.sort((a, b) => rank(b) - rank(a));
 
