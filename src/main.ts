@@ -31,6 +31,7 @@ export interface WurzelSettings {
 	tagHash: boolean;
 	/** Colour nodes by the core graph's colour groups and by type; off draws only the accent colour. */
 	globalColorGroups: boolean;
+	globalMinTagFiles: number;
 }
 
 export interface SavedLayout {
@@ -56,6 +57,7 @@ const DEFAULT_SETTINGS: WurzelSettings = {
 	globalControlsCollapsed: false,
 	tagHash: false,
 	globalColorGroups: false,
+	globalMinTagFiles: 2,
 };
 
 const LAYOUT_FILE = "graph-layout.json";
@@ -325,6 +327,11 @@ class WurzelSettingTab extends PluginSettingTab {
 						name: "Colour groups",
 						desc: "Colour nodes like the core graph: its colour groups, attachments and tags in their own colours. Off: one plain colour, with tags and highlights in the accent colour.",
 						control: { type: "toggle", key: "globalColorGroups" },
+					},
+					{
+						name: "Smallest tag shown",
+						desc: "Tags on fewer files than this are left out of the wiki graph. A tag on a single file groups nothing and only adds a dot.",
+						control: { type: "slider", key: "globalMinTagFiles", min: 1, max: 10, step: 1 },
 					},
 					{
 						name: "File types",

@@ -45,6 +45,8 @@ export interface GlobalOptions {
 	denseTags: boolean;
 	extensions: Set<string>;
 	filter: string;
+	/** Tags carried by fewer files than this are left out; they group nothing. */
+	minTagFiles: number;
 }
 
 interface ColorGroup {
@@ -270,6 +272,7 @@ export class GlobalGraphView extends ItemView {
 					.filter((e) => e.length > 0),
 			),
 			filter: this.filterInput?.value ?? s.globalFilter,
+			minTagFiles: s.globalMinTagFiles,
 		};
 	}
 
@@ -352,15 +355,17 @@ export class GlobalGraphView extends ItemView {
 		for (const path of shown) fileNode(path);
 
 		if (o.showTags) {
+			const sizes = new Map([...store.index()].map(([t, paths]) => [t.toLowerCase(), paths.length]));
+			const big = (tag: string) => (sizes.get(tag.toLowerCase()) ?? 0) >= o.minTagFiles;
 			for (const path of shown) {
 				const tags = o.denseTags ? (tagsOf.get(path) ?? []) : store.directTagsOf(path);
-				for (const tag of tags) link(fileNode(path), tagNode(tag), "tag");
+				for (const tag of tags) if (big(tag)) link(fileNode(path), tagNode(tag), "tag");
 			}
 			// Narrower folder tags hang off broader ones: CM2112 -> Chemistry -> NUS.
 			if (!o.denseTags) {
 				for (const [child, parent] of store.tagParents()) {
 					const a = nodes.get("t:" + child.toLowerCase());
-					if (!a) continue;
+					if (!a || !big(parent)) continue;
 					link(a, tagNode(parent), "parent");
 				}
 			}
