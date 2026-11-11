@@ -129,3 +129,112 @@
   line-height: 18px;
   padding: 0 6px;
 }
+
+/* ---------- Tag graph ---------- */
+
+.ww-graph {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.ww-graph-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.ww-graph-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.ww-graph-button {
+  display: flex;
+  flex: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.ww-graph-button:hover {
+  color: var(--text-normal);
+}
+.ww-graph-button .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+.ww-graph-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.ww-graph-svg {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.ww-graph-svg.is-panning {
+  cursor: grabbing;
+}
+.ww-edge {
+  stroke: var(--graph-line, var(--background-modifier-border-hover));
+  stroke-width: 1;
+}
+.ww-edge.is-link {
+  stroke-dasharray: 4 3;
+}
+.ww-graph-svg.is-hovering .ww-edge {
+  opacity: 0.25;
+}
+.ww-graph-svg.is-hovering .ww-edge.is-hover {
+  opacity: 1;
+  stroke: var(--interactive-accent);
+  stroke-width: 1.5;
+}
+.ww-node {
+  cursor: pointer;
+}
+.ww-node circle,
+.ww-node rect {
+  fill: var(--graph-node, var(--text-muted));
+  stroke: var(--background-primary);
+  stroke-width: 1.5;
+}
+.ww-node.is-note circle {
+  fill: var(--graph-node, var(--text-muted));
+}
+.ww-node.is-file circle {
+  fill: var(--graph-node-attachment, var(--color-yellow));
+}
+.ww-node.is-tag rect {
+  fill: var(--graph-node-tag, var(--color-green));
+}
+.ww-node.is-center circle,
+.ww-node.is-center rect {
+  fill: var(--graph-node-focused, var(--interactive-accent));
+}
+.ww-node text {
+  fill: var(--text-normal);
+  font-size: 11px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--background-primary);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.ww-node.is-tag text {
+  fill: var(--text-muted);
+}
+.ww-node.is-center text {
+  font-weight: 700;
+}
+.ww-graph-svg.is-hovering .ww-node:not(.is-hover) {
+  opacity: 0.55;
+}

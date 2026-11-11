@@ -22,6 +22,7 @@ Renaming, moving or deleting a file or folder inside Obsidian keeps the tags in 
 
 - **Edit tags**: right-click a file or folder in the file explorer and choose "Edit tags", or run "Edit tags of the current file".
 - **Search**: the tag ribbon icon or "Search files by tag". `#Chemistry #CM2112` finds files with both tags, `-#Lab` leaves a tag out, and plain words match file paths. Typing `#` suggests tags. Nested tags match too: `#Chemistry` finds `Chemistry/organic`.
+- **Tag graph**: "Open tag graph" adds a panel to the right sidebar. It follows the file being viewed: the file in the middle, its tags around it, and for each tag the files that share the most tags with it (notes as grey dots, other files as yellow dots, tags as green squares; linked notes joined by dashed lines). Click a tag to put it in the middle, Ctrl/Cmd-click it to search for it, click a file to open it; scroll to zoom, drag to pan. Settings: files per tag, upper limit, linked notes on or off, and tags to hide (for example very broad ones).
 - **Reload tag files** re-reads every `.tag` file after editing them outside Obsidian.
 
 ## For other plugins

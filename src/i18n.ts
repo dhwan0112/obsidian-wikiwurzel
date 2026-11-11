@@ -21,5 +21,11 @@ export const T = {
 		ko() ? "폴더 태그는 이 폴더와 하위 폴더의 모든 파일에 적용됩니다." : "Folder tags apply to every file in this folder and below.",
 	cmdSearch: () => (ko() ? "태그로 파일 찾기" : "Search files by tag"),
 	cmdEdit: () => (ko() ? "현재 파일의 태그 편집" : "Edit tags of the current file"),
+	graphTitle: () => (ko() ? "태그 그래프" : "Tag graph"),
+	graphBack: () => (ko() ? "현재 파일로" : "Back to the current file"),
+	graphFit: () => (ko() ? "전체 보기" : "Fit"),
+	graphNoFile: () => (ko() ? "열린 파일이 없습니다." : "No file is open."),
+	graphNoTags: () => (ko() ? "이 파일에는 태그가 없습니다. 오른쪽 클릭 → 태그 편집으로 붙여 보세요." : "This file has no tags yet. Right-click it and choose Edit tags."),
+	cmdGraph: () => (ko() ? "태그 그래프 열기" : "Open tag graph"),
 	cmdReload: () => (ko() ? "태그 파일 다시 읽기" : "Reload tag files"),
 };

@@ -1,10 +1,30 @@
-import { Events, Plugin, TFolder, debounce } from "obsidian";
+import { App, Events, Plugin, PluginSettingTab, SettingDefinitionItem, TFolder, debounce } from "obsidian";
 import { API_VERSION, EVENT_CHANGED, EVENT_READY, EVENT_REQUEST, EVENT_UNLOAD, WurzelApi } from "./api";
+import { GRAPH_VIEW, LocalGraphView } from "./graph";
 import { T } from "./i18n";
 import { FileTagStore, folderOf } from "./store";
 import { TagEditModal, TagSearchModal, isFolderPath } from "./ui";
 
+export interface WurzelSettings {
+	/** Files shown per tag in the tag graph. */
+	graphPerTag: number;
+	/** Most files in the tag graph at once. */
+	graphMaxFiles: number;
+	/** Also show notes linked to or from the file. */
+	graphShowLinks: boolean;
+	/** Comma-separated tags left out of the graph, e.g. very broad ones. */
+	graphHiddenTags: string;
+}
+
+const DEFAULT_SETTINGS: WurzelSettings = {
+	graphPerTag: 6,
+	graphMaxFiles: 40,
+	graphShowLinks: true,
+	graphHiddenTags: "",
+};
+
 export default class Wikiwurzel extends Plugin {
+	settings: WurzelSettings = DEFAULT_SETTINGS;
 	store!: FileTagStore;
 	api!: WurzelApi;
 	private announced = false;
@@ -13,13 +33,28 @@ export default class Wikiwurzel extends Plugin {
 		return this.app.workspace;
 	}
 
-	private announceChange = debounce(() => this.bus.trigger(EVENT_CHANGED), 50, true);
+	private announceChange = debounce(() => {
+		this.bus.trigger(EVENT_CHANGED);
+		this.graphViews().forEach((v) => v.render());
+	}, 50, true);
 
 	async onload() {
+		const data = (await this.loadData()) as Partial<WurzelSettings> | null;
+		this.settings = { ...DEFAULT_SETTINGS, ...(data ?? {}) };
 		this.store = new FileTagStore(this.app, () => {
 			if (this.announced) this.announceChange();
 		});
 		this.api = this.createApi();
+
+		this.registerView(GRAPH_VIEW, (leaf) => new LocalGraphView(leaf, this));
+		this.addCommand({ id: "open-graph", name: T.cmdGraph(), callback: () => void this.openGraph() });
+		this.addSettingTab(new WurzelSettingTab(this.app, this));
+		const follow = () => {
+			const path = this.app.workspace.getActiveFile()?.path ?? null;
+			this.graphViews().forEach((v) => v.followFile(path));
+		};
+		this.registerEvent(this.app.workspace.on("file-open", follow));
+		this.registerEvent(this.app.workspace.on("active-leaf-change", follow));
 
 		this.addCommand({ id: "search", name: T.cmdSearch(), callback: () => this.openSearch() });
 		this.addCommand({
@@ -81,6 +116,8 @@ export default class Wikiwurzel extends Plugin {
 			void this.store.loadAll().then(() => {
 				this.announced = true;
 				this.announceReady();
+				follow();
+				this.graphViews().forEach((v) => v.render());
 			});
 		});
 	}
@@ -93,6 +130,32 @@ export default class Wikiwurzel extends Plugin {
 	/** Only once every .tag file is read, so nobody draws from a half-loaded index. */
 	private announceReady() {
 		if (this.announced) this.bus.trigger(EVENT_READY, this.api);
+	}
+
+	graphViews(): LocalGraphView[] {
+		return this.app.workspace
+			.getLeavesOfType(GRAPH_VIEW)
+			.map((l) => l.view)
+			.filter((v): v is LocalGraphView => v instanceof LocalGraphView);
+	}
+
+	async openGraph() {
+		const { workspace } = this.app;
+		let leaf = workspace.getLeavesOfType(GRAPH_VIEW)[0];
+		if (!leaf) {
+			const right = workspace.getRightLeaf(false);
+			if (!right) return;
+			await right.setViewState({ type: GRAPH_VIEW, active: true });
+			leaf = right;
+		}
+		await workspace.revealLeaf(leaf);
+		const view = leaf.view;
+		if (view instanceof LocalGraphView) view.followFile(workspace.getActiveFile()?.path ?? null);
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
+		this.graphViews().forEach((v) => v.render());
 	}
 
 	openSearch(query = "") {
@@ -117,5 +180,55 @@ export default class Wikiwurzel extends Plugin {
 			openSearch: (query) => this.openSearch(query),
 			openEditor: (path) => this.openEditor(path),
 		};
+	}
+}
+
+/* ---------- Settings ---------- */
+
+type SettingKey = keyof WurzelSettings;
+
+class WurzelSettingTab extends PluginSettingTab {
+	constructor(app: App, private plugin: Wikiwurzel) {
+		super(app, plugin);
+	}
+
+	getSettingDefinitions(): SettingDefinitionItem<SettingKey>[] {
+		return [
+			{
+				type: "group",
+				heading: "Tag graph",
+				items: [
+					{
+						name: "Files per tag",
+						desc: "How many files each tag brings into the graph. Files sharing the most tags come first.",
+						control: { type: "slider", key: "graphPerTag", min: 2, max: 20, step: 1 },
+					},
+					{
+						name: "Most files",
+						desc: "Upper limit on files in the graph.",
+						control: { type: "slider", key: "graphMaxFiles", min: 10, max: 100, step: 5 },
+					},
+					{
+						name: "Show linked notes",
+						desc: "Also show notes that link to or from the file, as dashed lines.",
+						control: { type: "toggle", key: "graphShowLinks" },
+					},
+					{
+						name: "Hidden tags",
+						desc: "Comma-separated tags to leave out of the graph, such as very broad ones (e.g. NUS, paper).",
+						control: { type: "text", key: "graphHiddenTags", placeholder: "NUS, paper" },
+					},
+				],
+			},
+		];
+	}
+
+	getControlValue(key: string): unknown {
+		return this.plugin.settings[key as SettingKey];
+	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		this.plugin.settings = { ...this.plugin.settings, [key]: value };
+		await this.plugin.saveSettings();
 	}
 }
