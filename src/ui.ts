@@ -175,8 +175,8 @@ export class TagSearchModal extends SuggestModal<SearchItem> {
 		this.modalEl.addClass("ww-search");
 	}
 
-	onOpen() {
-		super.onOpen();
+	async onOpen() {
+		await super.onOpen();
 		if (this.initial) {
 			this.inputEl.value = this.initial;
 			this.inputEl.dispatchEvent(new Event("input"));

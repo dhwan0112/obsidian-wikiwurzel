@@ -188,7 +188,7 @@ export class FileTagStore {
 				if (list) list.push(file.path);
 				else paths.set(key, [file.path]);
 				let counts = spellings.get(key);
-				if (!counts) spellings.set(key, (counts = new Map()));
+				if (!counts) spellings.set(key, (counts = new Map<string, number>()));
 				counts.set(tag, (counts.get(tag) ?? 0) + 1);
 			}
 		}
