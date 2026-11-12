@@ -595,7 +595,7 @@ export class GlobalGraphView extends ItemView {
 
 	/**
 	 * Labels, most important first, skipping any that would overlap one already drawn:
-	 * the hovered node and its neighbours, then tags by size, then notes, then other files.
+	 * the hovered node, its neighbours, then tags by size, then notes, then other files.
 	 * Drawn in screen pixels so the text stays sharp and the same size at every zoom.
 	 */
 	private drawLabels(
@@ -656,8 +656,9 @@ export class GlobalGraphView extends ItemView {
 			const clash = keys.some((key) =>
 				(taken.get(key) ?? []).some((o) => box.x0 < o.x1 && o.x0 < box.x1 && box.y0 < o.y1 && o.y0 < box.y1),
 			);
-			// The hovered neighbourhood always shows; everything else only where there is room.
-			if (clash && !important) continue;
+			// Only the hovered node's own name is always drawn. Its neighbours come next in line but
+			// still need room, or a tag with hundreds of files turns into a pile of overlapping text.
+			if (clash && n !== focus) continue;
 			for (const key of keys) {
 				const list = taken.get(key);
 				if (list) list.push(box);
